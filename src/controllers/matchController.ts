@@ -1,6 +1,7 @@
 // src/controllers/matchController.ts
 import { Request, Response } from "express";
 import { riotApi } from "../lib/riot";
+import { buildScoutTraits, RecentMatch } from "../utils/buildScoutTraits";
 
 type RiotParticipant = {
   puuid: string;
@@ -31,7 +32,7 @@ type RiotParticipant = {
 
 export const getFullProfile = async (req: Request, res: Response) => {
   const { name, tag } = req.params;
-
+  
   console.log("RIOT_API_KEY exists?", !!process.env.RIOT_API_KEY);
   console.log("RIOT_API_KEY preview:", process.env.RIOT_API_KEY?.slice(0, 10));
 
@@ -64,47 +65,54 @@ export const getFullProfile = async (req: Request, res: Response) => {
       )
     );
 
-    const recentMatches = matchDetails.map((matchRes) => {
-      const match = matchRes.data;
-      const participant: RiotParticipant | undefined = match.info.participants.find(
-        (p: RiotParticipant) => p.puuid === puuid
-      );
+    const recentMatches: RecentMatch[] = matchDetails
+      .map((matchRes): RecentMatch | null => {
+        const match = matchRes.data;
+        const participant: RiotParticipant | undefined = match.info.participants.find(
+          (p: RiotParticipant) => p.puuid === puuid
+        );
 
-      if (!participant) return null;
+        if (!participant) return null;
 
-      return {
-        matchId: match.metadata.matchId,
-        gameCreation: match.info.gameCreation,
-        gameDuration: match.info.gameDuration,
-        queueId: match.info.queueId,
-        championName: participant.championName,
-        kills: participant.kills,
-        deaths: participant.deaths,
-        assists: participant.assists,
-        kda: Number(
-          ((participant.kills + participant.assists) / Math.max(1, participant.deaths)).toFixed(2)
-        ),
-        win: participant.win,
-        role: participant.teamPosition || participant.lane || "UNKNOWN",
-        farm:
-          (participant.totalMinionsKilled || 0) +
-          (participant.neutralMinionsKilled || 0),
-        goldEarned: participant.goldEarned,
-        damage: participant.totalDamageDealtToChampions,
-        items: [
-          participant.item0,
-          participant.item1,
-          participant.item2,
-          participant.item3,
-          participant.item4,
-          participant.item5,
-          participant.item6,
-        ],
-        summonerSpells: [participant.summoner1Id, participant.summoner2Id],
-      };
-    }).filter(Boolean);
+        return {
+          matchId: match.metadata.matchId,
+          gameCreation: match.info.gameCreation,
+          gameDuration: match.info.gameDuration,
+          queueId: match.info.queueId,
+          championName: participant.championName,
+          kills: participant.kills,
+          deaths: participant.deaths,
+          assists: participant.assists,
+          kda: Number(
+            (
+              (participant.kills + participant.assists) /
+              Math.max(1, participant.deaths)
+            ).toFixed(2)
+          ),
+          win: participant.win,
+          role: participant.teamPosition || participant.lane || "UNKNOWN",
+          farm:
+            (participant.totalMinionsKilled || 0) +
+            (participant.neutralMinionsKilled || 0),
+          goldEarned: participant.goldEarned,
+          damage: participant.totalDamageDealtToChampions,
+          items: [
+            participant.item0,
+            participant.item1,
+            participant.item2,
+            participant.item3,
+            participant.item4,
+            participant.item5,
+            participant.item6,
+          ],
+          summonerSpells: [participant.summoner1Id, participant.summoner2Id],
+        };
+      })
+      .filter((match): match is RecentMatch => match !== null);
 
+    const traits = buildScoutTraits(recentMatches);
     const wins = recentMatches.filter((m: any) => m.win).length;
+
     const losses = recentMatches.length - wins;
 
     const averageKda =
@@ -141,6 +149,7 @@ export const getFullProfile = async (req: Request, res: Response) => {
         mostPlayedRole,
       },
       recentMatches,
+      traits,
     });
   } catch (error: any) {
       console.error("RIOT ERROR STATUS:", error.response?.status);
