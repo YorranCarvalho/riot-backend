@@ -30,6 +30,71 @@ type RiotParticipant = {
   summoner2Id: number;
 };
 
+type RiotSummonerResponse = {
+  id: string;
+  accountId: string;
+  puuid: string;
+  profileIconId: number;
+  summonerLevel: number;
+};
+
+type RiotLeagueEntry = {
+  queueType: "RANKED_SOLO_5x5" | "RANKED_FLEX_SR" | string;
+  tier: string;
+  rank: string;
+  leaguePoints: number;
+  wins: number;
+  losses: number;
+};
+
+type RankedSeason = {
+  season: string;
+  tier: string;
+  lp: number;
+};
+
+type RankedQueue = {
+  currentTier: string;
+  currentLp: number;
+  seasons: RankedSeason[];
+};
+
+type RankedResponse = {
+  soloDuo: RankedQueue;
+  flex: RankedQueue;
+};
+
+function formatRankedQueue(
+  entry: RiotLeagueEntry | null,
+  currentSeason: string
+): RankedQueue {
+  if (!entry) {
+    return {
+      currentTier: "RANK_UNAVAILABLE",
+      currentLp: 0,
+      seasons: [
+        {
+          season: currentSeason,
+          tier: "RANK_UNAVAILABLE",
+          lp: 0,
+        },
+      ],
+    };
+  }
+
+  return {
+    currentTier: `${entry.tier} ${entry.rank}`,
+    currentLp: entry.leaguePoints,
+    seasons: [
+      {
+        season: currentSeason,
+        tier: `${entry.tier} ${entry.rank}`,
+        lp: entry.leaguePoints,
+      },
+    ],
+  };
+}
+
 export const getFullProfile = async (req: Request, res: Response) => {
   const { name, tag } = req.params;
   
@@ -40,13 +105,18 @@ export const getFullProfile = async (req: Request, res: Response) => {
     const accountRes = await riotApi.get(
       `https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`
     );
+    console.log("account ok");
 
     const { puuid, gameName, tagLine } = accountRes.data;
 
-    const [summonerRes, masteryRes, matchIdsRes] = await Promise.all([
-      riotApi.get(
-        `https://br1.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`
-      ),
+    const summonerRes = await riotApi.get<RiotSummonerResponse>(
+      `https://br1.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}`
+    );
+
+    console.log("summoner ok");
+    console.log("summoner data:", summonerRes.data);
+
+    const [masteryRes, matchIdsRes] = await Promise.all([
       riotApi.get(
         `https://br1.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/${puuid}`
       ),
@@ -54,6 +124,36 @@ export const getFullProfile = async (req: Request, res: Response) => {
         `https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=0&count=10`
       ),
     ]);
+
+    console.log("mastery ok");
+    console.log("match ids ok");
+
+    const summonerId = summonerRes.data?.id;
+    let leagueEntries: RiotLeagueEntry[] = [];
+
+    if (summonerId) {
+      try {
+        const rankedRes = await riotApi.get(
+          `https://br1.api.riotgames.com/lol/league/v4/entries/by-summoner/${summonerId}`
+        );
+        leagueEntries = rankedRes.data || [];
+        console.log("ranked ok");
+      } catch (rankedError: any) {
+        console.error("ranked fetch failed:", rankedError.response?.data || rankedError.message);
+      }
+    } else {
+      console.warn("summonerRes.data.id não veio na resposta da Riot. Ranked será tratado como UNRANKED.");
+    }
+
+    if (!summonerId) {
+      console.warn(
+        "summonerRes.data.id não veio na resposta da Riot. Ranked será tratado como indisponível."
+      );
+    }
+
+    console.log("mastery ok");
+    console.log("match ids ok");
+    console.log("ranked ok");
 
     const matchIds: string[] = matchIdsRes.data;
 
@@ -64,6 +164,19 @@ export const getFullProfile = async (req: Request, res: Response) => {
         )
       )
     );
+
+    const currentSeason = "S2025";
+
+    const soloDuoEntry =
+      leagueEntries.find((entry) => entry.queueType === "RANKED_SOLO_5x5") || null;
+
+    const flexEntry =
+      leagueEntries.find((entry) => entry.queueType === "RANKED_FLEX_SR") || null;
+
+    const ranked: RankedResponse = {
+      soloDuo: formatRankedQueue(soloDuoEntry, currentSeason),
+      flex: formatRankedQueue(flexEntry, currentSeason),
+    };
 
     const recentMatches: RecentMatch[] = matchDetails
       .map((matchRes): RecentMatch | null => {
@@ -133,6 +246,8 @@ export const getFullProfile = async (req: Request, res: Response) => {
     const mostPlayedRole =
       Object.entries(roleCount).sort((a, b) => b[1] - a[1])[0]?.[0] || "UNKNOWN";
 
+    console.log("summoner data:", summonerRes.data);
+
     return res.json({
       basic: {
         puuid,
@@ -150,22 +265,17 @@ export const getFullProfile = async (req: Request, res: Response) => {
       },
       recentMatches,
       traits,
+      ranked
     });
   } catch (error: any) {
-      console.error("RIOT ERROR STATUS:", error.response?.status);
-      console.error("RIOT ERROR DATA:", error.response?.data || error.message);
+    console.error("FAILED URL:", error.config?.url);
+    console.error("FAILED STATUS:", error.response?.status);
+    console.error("FAILED DATA:", error.response?.data || error.message);
 
-      const status = error.response?.status || 500;
-
-      if (status === 404) {
-        return res.status(404).json({
-          error: "Invocador não encontrado",
-        });
-      }
-
-      return res.status(status).json({
-        error: "Erro ao montar perfil completo",
-        details: error.response?.data || error.message,
-      });
-    }
+    return res.status(error.response?.status || 500).json({
+      error: "Erro ao montar perfil completo",
+      details: error.response?.data || error.message,
+      failedUrl: error.config?.url,
+    });
+  }
 };
