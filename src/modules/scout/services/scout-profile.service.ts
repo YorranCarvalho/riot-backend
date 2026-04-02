@@ -9,6 +9,7 @@ import { PlayerScoreRepository } from "../repositories/player-score.repository";
 import { getCurrentSeasonLabel } from "../utils/season.util";
 import { PlayerRepository } from "../repositories/player.respository";
 import { ScoutProfileRepository } from "../repositories/scout.profile.repository";
+import { buildScoutProfile } from "./buildScoutProfile";
 
 export class ScoutProfileService {
   private playerRepository = new PlayerRepository();
@@ -123,46 +124,7 @@ export class ScoutProfileService {
 
     const traits = buildScoutTraits(recentMatches);
 
-    const championPoolMap = new Map<
-      string,
-      {
-        championName: string;
-        games: number;
-        wins: number;
-        losses: number;
-        kdaTotal: number;
-      }
-    >();
-
-    for (const match of recentMatches) {
-      const current = championPoolMap.get(match.championName) ?? {
-        championName: match.championName,
-        games: 0,
-        wins: 0,
-        losses: 0,
-        kdaTotal: 0,
-      };
-
-      current.games += 1;
-      current.wins += match.win ? 1 : 0;
-      current.losses += match.win ? 0 : 1;
-      current.kdaTotal += match.kda;
-
-      championPoolMap.set(match.championName, current);
-    }
-
-    const championPool = Array.from(championPoolMap.values())
-      .map((item) => ({
-        championName: item.championName,
-        games: item.games,
-        wins: item.wins,
-        losses: item.losses,
-        winRate: Number(((item.wins / item.games) * 100).toFixed(2)),
-        averageKda: Number((item.kdaTotal / item.games).toFixed(2)),
-      }))
-      .sort((a, b) => b.games - a.games);
-
-    return {
+    return buildScoutProfile({
       basic: {
         puuid: refreshedPlayer.puuid,
         name: refreshedPlayer.gameName,
@@ -196,9 +158,8 @@ export class ScoutProfileService {
         deathScore: playerScore?.deathScore ?? 0,
         consistencyScore: playerScore?.consistencyScore ?? 0,
       },
-      championPool,
       recentMatches,
       traits,
-    };
+    });
   }
 }
