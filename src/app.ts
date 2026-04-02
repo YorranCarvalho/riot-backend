@@ -1,13 +1,14 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import SummonerRoutes from "./routes/summoner.routes";
+import scoutRoutes from "./routes/scout.routes";
 
 const app = express();
+
 app.use(cors());
 app.use(helmet());
 app.use(express.json());
 
-app.use("/summoner", SummonerRoutes);
+app.use("/scout", scoutRoutes);
 
 export default app;

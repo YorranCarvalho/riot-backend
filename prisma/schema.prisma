@@ -1,20 +1,159 @@
 generator client {
-    provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
-
 
 datasource db {
-    provider = "postgresql"
-    url = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
+model Player {
+  id              String   @id @default(cuid())
+  puuid           String   @unique
+  gameName        String
+  tagLine         String
+  region          String   @default("br1")
+  profileIconId   Int
+  summonerLevel   Int
+  summonerId      String?
+  accountId       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  playerScore       PlayerScore?
+  rankedSnapshots   RankedSnapshot[]
+  championMasteries ChampionMastery[]
+  playerMatches     PlayerMatch[]
+  scoutProfile      ScoutProfile?
+}
 
-model Summoner {
-    id String @id @default(cuid())
-    puuid String @unique
-    name String
-    tag String
-    profileIconId Int
-    level Int
-    createdAt DateTime @default(now())
+model RankedSnapshot {
+  id           String   @id @default(cuid())
+  playerId     String
+  queueType    String
+  tier         String
+  rank         String
+  leaguePoints Int
+  wins         Int
+  losses       Int
+  winRate      Float
+  season       String
+  capturedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId, queueType])
+  @@index([playerId, season])
+}
+
+model ChampionMastery {
+  id             String   @id @default(cuid())
+  playerId       String
+  championId     Int
+  championLevel  Int
+  championPoints Int
+  lastPlayTime   DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, championId])
+  @@index([playerId])
+}
+
+model Match {
+  id           String   @id
+  queueId      Int
+  gameCreation DateTime
+  gameDuration Int
+  gameVersion  String?
+  mapId        Int?
+  platformId   String?
+  createdAt    DateTime @default(now())
+
+  participants PlayerMatch[]
+}
+
+model PlayerMatch {
+  id                  String   @id @default(cuid())
+  playerId            String
+  matchId             String
+  puuid               String
+  summonerName        String?
+  riotIdGameName      String?
+  riotIdTagLine       String?
+  championName        String
+  championId          Int?
+  teamId              Int
+  role                String
+  lane                String?
+  win                 Boolean
+  kills               Int
+  deaths              Int
+  assists             Int
+  kda                 Float
+  totalCs             Int
+  csPerMin            Float
+  goldEarned          Int
+  goldPerMin          Float
+  damageToChampions   Int
+  damagePerMin        Float
+  visionScore         Int?
+  visionPerMin        Float?
+  champLevel          Int
+  item0               Int
+  item1               Int
+  item2               Int
+  item3               Int
+  item4               Int
+  item5               Int
+  item6               Int
+  summoner1Id         Int
+  summoner2Id         Int
+  createdAt           DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, matchId])
+  @@index([playerId, role])
+  @@index([playerId, championName])
+  @@index([matchId])
+}
+
+model ScoutProfile {
+  id                    String   @id @default(cuid())
+  playerId              String   @unique
+  winsLast10            Int      @default(0)
+  lossesLast10          Int      @default(0)
+  averageKdaLast10      Float    @default(0)
+  averageCsPerMinLast10 Float    @default(0)
+  averageDpmLast10      Float    @default(0)
+  averageGpmLast10      Float    @default(0)
+  mostPlayedRole        String   @default("UNKNOWN")
+  championPoolSize      Int      @default(0)
+  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+}
+
+model PlayerScore {
+  id                 String   @id @default(cuid())
+  playerId           String   @unique
+  performanceScore   Float    @default(0)
+  kdaScore           Float    @default(0)
+  csScore            Float    @default(0)
+  damageScore        Float    @default(0)
+  goldScore          Float    @default(0)
+  visionScore        Float    @default(0)
+  winRateScore       Float    @default(0)
+  deathScore         Float    @default(0)
+  consistencyScore   Float    @default(0)
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }

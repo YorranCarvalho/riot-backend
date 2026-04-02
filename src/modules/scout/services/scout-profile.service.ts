@@ -1,0 +1,204 @@
+import { RankedRepository } from "../repositories/ranked.repository";
+import { MasteryRepository } from "../repositories/mastery.repository";
+import { MatchRepository } from "../repositories/match.repository";
+import { mapRankedQueue } from "../mappers/riot-ranked.mapper";
+import { buildScoutTraits } from "../utils/buildScoutTraits";
+import { ScoutRefreshService } from "./scout-refresh.service";
+import { ScoutProfileDto } from "../dto/scout-profile.dto";
+import { PlayerScoreRepository } from "../repositories/player-score.repository";
+import { getCurrentSeasonLabel } from "../utils/season.util";
+import { PlayerRepository } from "../repositories/player.respository";
+import { ScoutProfileRepository } from "../repositories/scout.profile.repository";
+
+export class ScoutProfileService {
+  private playerRepository = new PlayerRepository();
+  private rankedRepository = new RankedRepository();
+  private masteryRepository = new MasteryRepository();
+  private matchRepository = new MatchRepository();
+  private scoutProfileRepository = new ScoutProfileRepository();
+  private playerScoreRepository = new PlayerScoreRepository();
+  private scoutRefreshService = new ScoutRefreshService();
+
+  async execute({
+    name,
+    tag,
+  }: {
+    name: string;
+    tag: string;
+  }): Promise<ScoutProfileDto> {
+    const refreshed = await this.scoutRefreshService.execute({ name, tag });
+
+    const refreshedPlayer = await this.playerRepository.findByPuuid(
+      refreshed.puuid
+    );
+
+    if (!refreshedPlayer) {
+      throw new Error("Player não encontrado após atualização.");
+    }
+
+    const [
+      rankedSnapshots,
+      masteries,
+      recentMatchesDb,
+      scoutProfile,
+      playerScore,
+    ] = await Promise.all([
+      this.rankedRepository.findLatestByPlayerId(refreshedPlayer.id),
+      this.masteryRepository.findTopByPlayerId(refreshedPlayer.id, 5),
+      this.matchRepository.findRecentByPlayerId(refreshedPlayer.id, 10),
+      this.scoutProfileRepository.findByPlayerId(refreshedPlayer.id),
+      this.playerScoreRepository.findByPlayerId(refreshedPlayer.id),
+    ]);
+
+    const currentSeason = getCurrentSeasonLabel();
+
+    const soloEntry =
+      rankedSnapshots.find(
+        (entry) => entry.queueType === "RANKED_SOLO_5x5"
+      ) || null;
+
+    const flexEntry =
+      rankedSnapshots.find(
+        (entry) => entry.queueType === "RANKED_FLEX_SR"
+      ) || null;
+
+    const ranked = {
+      soloDuo: mapRankedQueue(
+        soloEntry
+          ? {
+              queueType: soloEntry.queueType,
+              tier: soloEntry.tier,
+              rank: soloEntry.rank,
+              leaguePoints: soloEntry.leaguePoints,
+              wins: soloEntry.wins,
+              losses: soloEntry.losses,
+            }
+          : null,
+        currentSeason
+      ),
+      flex: mapRankedQueue(
+        flexEntry
+          ? {
+              queueType: flexEntry.queueType,
+              tier: flexEntry.tier,
+              rank: flexEntry.rank,
+              leaguePoints: flexEntry.leaguePoints,
+              wins: flexEntry.wins,
+              losses: flexEntry.losses,
+            }
+          : null,
+        currentSeason
+      ),
+    };
+
+    const recentMatches = recentMatchesDb.map((match) => ({
+      matchId: match.matchId,
+      gameCreation: match.match.gameCreation.getTime(),
+      gameDuration: match.match.gameDuration,
+      queueId: match.match.queueId,
+      championName: match.championName,
+      kills: match.kills,
+      deaths: match.deaths,
+      assists: match.assists,
+      kda: match.kda,
+      win: match.win,
+      role: match.role,
+      farm: match.totalCs,
+      csPerMin: match.csPerMin,
+      goldEarned: match.goldEarned,
+      goldPerMin: match.goldPerMin,
+      damage: match.damageToChampions,
+      damagePerMin: match.damagePerMin,
+      items: [
+        match.item0,
+        match.item1,
+        match.item2,
+        match.item3,
+        match.item4,
+        match.item5,
+        match.item6,
+      ],
+      summonerSpells: [match.summoner1Id, match.summoner2Id],
+    }));
+
+    const traits = buildScoutTraits(recentMatches);
+
+    const championPoolMap = new Map<
+      string,
+      {
+        championName: string;
+        games: number;
+        wins: number;
+        losses: number;
+        kdaTotal: number;
+      }
+    >();
+
+    for (const match of recentMatches) {
+      const current = championPoolMap.get(match.championName) ?? {
+        championName: match.championName,
+        games: 0,
+        wins: 0,
+        losses: 0,
+        kdaTotal: 0,
+      };
+
+      current.games += 1;
+      current.wins += match.win ? 1 : 0;
+      current.losses += match.win ? 0 : 1;
+      current.kdaTotal += match.kda;
+
+      championPoolMap.set(match.championName, current);
+    }
+
+    const championPool = Array.from(championPoolMap.values())
+      .map((item) => ({
+        championName: item.championName,
+        games: item.games,
+        wins: item.wins,
+        losses: item.losses,
+        winRate: Number(((item.wins / item.games) * 100).toFixed(2)),
+        averageKda: Number((item.kdaTotal / item.games).toFixed(2)),
+      }))
+      .sort((a, b) => b.games - a.games);
+
+    return {
+      basic: {
+        puuid: refreshedPlayer.puuid,
+        name: refreshedPlayer.gameName,
+        tag: refreshedPlayer.tagLine,
+        profileIconId: refreshedPlayer.profileIconId,
+        level: refreshedPlayer.summonerLevel,
+      },
+      ranked,
+      mastery: masteries.map((mastery) => ({
+        championId: mastery.championId,
+        championLevel: mastery.championLevel,
+        championPoints: mastery.championPoints,
+      })),
+      stats: {
+        wins: scoutProfile?.winsLast10 ?? 0,
+        losses: scoutProfile?.lossesLast10 ?? 0,
+        averageKda: scoutProfile?.averageKdaLast10 ?? 0,
+        averageCsPerMin: scoutProfile?.averageCsPerMinLast10 ?? 0,
+        averageDamagePerMin: scoutProfile?.averageDpmLast10 ?? 0,
+        averageGoldPerMin: scoutProfile?.averageGpmLast10 ?? 0,
+        mostPlayedRole: scoutProfile?.mostPlayedRole ?? "UNKNOWN",
+      },
+      scores: {
+        performanceScore: playerScore?.performanceScore ?? 0,
+        kdaScore: playerScore?.kdaScore ?? 0,
+        csScore: playerScore?.csScore ?? 0,
+        damageScore: playerScore?.damageScore ?? 0,
+        goldScore: playerScore?.goldScore ?? 0,
+        visionScore: playerScore?.visionScore ?? 0,
+        winRateScore: playerScore?.winRateScore ?? 0,
+        deathScore: playerScore?.deathScore ?? 0,
+        consistencyScore: playerScore?.consistencyScore ?? 0,
+      },
+      championPool,
+      recentMatches,
+      traits,
+    };
+  }
+}
