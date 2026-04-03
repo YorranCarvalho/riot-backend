@@ -34,15 +34,17 @@ export class ScoutRefreshService {
       tagLine: account.tagLine,
       profileIconId: summoner.profileIconId,
       summonerLevel: summoner.summonerLevel,
-      summonerId: summoner.id,
-      accountId: summoner.accountId,
+      summonerId: summoner.id ?? null,
+      accountId: summoner.accountId ?? null,
       region: "br1",
     });
 
     const [leagueEntries, championMasteries, matchIds] = await Promise.all([
-      this.riotProfileService.getLeagueEntriesBySummonerId(summoner.id),
+      summoner.id
+        ? this.riotProfileService.getLeagueEntriesBySummonerId(summoner.id)
+        : Promise.resolve([]),
       this.riotProfileService.getChampionMasteryByPuuid(account.puuid),
-      this.riotMatchService.getMatchIdsByPuuid(account.puuid, 10),
+      this.riotMatchService.getMatchIdsByPuuid(account.puuid, 20, 0),
     ]);
 
     const currentSeason = getCurrentSeasonLabel();

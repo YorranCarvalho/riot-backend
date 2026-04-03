@@ -27,14 +27,15 @@ export class ScoutProfileService {
     name: string;
     tag: string;
   }): Promise<ScoutProfileDto> {
-    const refreshed = await this.scoutRefreshService.execute({ name, tag });
+    let player = await this.playerRepository.findByRiotId(name, tag);
 
-    const refreshedPlayer = await this.playerRepository.findByPuuid(
-      refreshed.puuid
-    );
+    if (!player) {
+      const refreshed = await this.scoutRefreshService.execute({ name, tag });
+      player = await this.playerRepository.findByPuuid(refreshed.puuid);
+    }
 
-    if (!refreshedPlayer) {
-      throw new Error("Player não encontrado após atualização.");
+    if (!player) {
+      throw new Error("Player não encontrado.");
     }
 
     const [
@@ -44,11 +45,11 @@ export class ScoutProfileService {
       scoutProfile,
       playerScore,
     ] = await Promise.all([
-      this.rankedRepository.findLatestByPlayerId(refreshedPlayer.id),
-      this.masteryRepository.findTopByPlayerId(refreshedPlayer.id, 5),
-      this.matchRepository.findRecentByPlayerId(refreshedPlayer.id, 10),
-      this.scoutProfileRepository.findByPlayerId(refreshedPlayer.id),
-      this.playerScoreRepository.findByPlayerId(refreshedPlayer.id),
+      this.rankedRepository.findLatestByPlayerId(player.id),
+      this.masteryRepository.findTopByPlayerId(player.id, 5),
+      this.matchRepository.findRecentByPlayerId(player.id, 10),
+      this.scoutProfileRepository.findByPlayerId(player.id),
+      this.playerScoreRepository.findByPlayerId(player.id),
     ]);
 
     const currentSeason = getCurrentSeasonLabel();
@@ -126,11 +127,11 @@ export class ScoutProfileService {
 
     return buildScoutProfile({
       basic: {
-        puuid: refreshedPlayer.puuid,
-        name: refreshedPlayer.gameName,
-        tag: refreshedPlayer.tagLine,
-        profileIconId: refreshedPlayer.profileIconId,
-        level: refreshedPlayer.summonerLevel,
+        puuid: player.puuid,
+        name: player.gameName,
+        tag: player.tagLine,
+        profileIconId: player.profileIconId,
+        level: player.summonerLevel,
       },
       ranked,
       mastery: masteries.map((mastery) => ({

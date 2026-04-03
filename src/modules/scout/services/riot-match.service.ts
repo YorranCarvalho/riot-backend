@@ -3,9 +3,13 @@ import { RiotMatchResponse } from "../types/riot.types";
 import { runInBatches } from "../utils/batch.util";
 
 export class RiotMatchService {
-  async getMatchIdsByPuuid(puuid: string, count = 10) {
+  async getMatchIdsByPuuid(
+    puuid: string,
+    count = 10,
+    start = 0
+  ) {
     const response = await riotApi.get<string[]>(
-      `https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=0&count=${count}`
+      `https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=${start}&count=${count}`
     );
 
     return response.data ?? [];
