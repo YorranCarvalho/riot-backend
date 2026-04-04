@@ -124,7 +124,7 @@ export class ScoutProfileService {
     }));
 
     const traits = buildScoutTraits(recentMatches);
-
+    
     return buildScoutProfile({
       basic: {
         puuid: player.puuid,

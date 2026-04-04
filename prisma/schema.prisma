@@ -157,3 +157,47 @@ model PlayerScore {
 
   player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
+
+
+
+
+
+
+
+model TacticianProfile {
+  id           Int      @id @default(autoincrement())
+  puuid        String   @unique
+  gameName     String
+  tagLine      String
+  summonerId   String?
+  accountId    String?
+  profileIconId Int?
+  summonerLevel Int?
+  region       String
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+}
+
+model TacticianRankedSnapshot {
+  id           Int      @id @default(autoincrement())
+  puuid        String
+  queueType    String
+  tier         String?
+  rank         String?
+  leaguePoints Int?
+  wins         Int?
+  losses       Int?
+  createdAt    DateTime @default(now())
+}
+
+model TacticianMatch {
+  id          Int      @id @default(autoincrement())
+  matchId     String   @unique
+  puuid       String
+  placement   Int?
+  level       Int?
+  lastRound   Int?
+  playersEliminated Int?
+  timeEliminated Float?
+  createdAt   DateTime @default(now())
+}
