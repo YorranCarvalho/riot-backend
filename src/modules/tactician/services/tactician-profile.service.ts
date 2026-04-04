@@ -5,6 +5,7 @@ import { TacticianSummonerService } from "./tactician-summoner.service";
 import { TacticianRankedService } from "./tactician-ranked.service";
 import { TacticianMatchService } from "./tactician-match.service";
 import { mapTftMatch } from "../mappers/riot-tft-profile.mapper";
+import { buildTftPerformanceSummary } from "../utils/tft-performance.util";
 
 interface ExecuteInput {
   gameName: string;
@@ -30,6 +31,7 @@ export class TacticianProfileService {
     const puuid = account.puuid;
 
     const profile = await this.tacticianSummonerService.execute(puuid);
+
     const ranked = profile?.id
       ? await this.tacticianRankedService.execute(profile.id)
       : null;
@@ -40,8 +42,10 @@ export class TacticianProfileService {
     );
 
     const recentMatches = rawMatches
-      .map((match) => mapTftMatch(match, puuid))
-      .filter(Boolean);
+    .map((match) => mapTftMatch(match, puuid))
+    .filter(Boolean);
+
+    const performance = buildTftPerformanceSummary(recentMatches as any[]);
 
     return {
       account: {
@@ -67,6 +71,7 @@ export class TacticianProfileService {
           }
         : null,
       recentMatches,
+      performance
     };
   }
 }
