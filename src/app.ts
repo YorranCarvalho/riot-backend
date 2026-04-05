@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import scoutRoutes from "./routes/scout.routes";
 import tacticianRoutes from "./routes/tactician.routes";
+import tftMetaCompsRoutes from "./routes/tft-meta-comps.routes";
 
 const app = express();
 
@@ -12,5 +13,6 @@ app.use(express.json());
 
 app.use("/scout", scoutRoutes);
 app.use("/tactician", tacticianRoutes);
+app.use("/tft/meta-comps", tftMetaCompsRoutes);
 
 export default app;

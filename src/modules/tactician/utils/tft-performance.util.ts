@@ -77,6 +77,103 @@ function buildCompSignature(match: TftMatch) {
   };
 }
 
+function getPlacementStats(placements: number[]) {
+  if (!placements.length) return null;
+
+  const best = Math.min(...placements);
+  const worst = Math.max(...placements);
+
+  const top4 = placements.filter((p) => p <= 4);
+  const bot4 = placements.filter((p) => p > 4);
+
+  const avgTop4 = top4.length ? average(top4) : 0;
+  const avgBot4 = bot4.length ? average(bot4) : 0;
+
+  const variance =
+    average(placements.map((p) => Math.pow(p - average(placements), 2)));
+
+  const consistencyScore = Number((1 / (1 + variance)).toFixed(3));
+
+  return {
+    bestPlacement: best,
+    worstPlacement: worst,
+    placementSpread: worst - best,
+    avgTop4Placement: Number(avgTop4.toFixed(2)),
+    avgBottom4Placement: Number(avgBot4.toFixed(2)),
+    consistencyScore,
+  };
+}
+
+function getPlacementDistribution(placements: number[]) {
+  const dist: Record<number, number> = {};
+
+  for (let i = 1; i <= 8; i++) {
+    dist[i] = 0;
+  }
+
+  placements.forEach((p) => {
+    const place = Math.min(8, Math.max(1, p));
+    dist[place]++;
+  });
+
+  return dist;
+}
+
+function getRecentForm(matches: TftMatch[]) {
+  const sorted = [...matches].sort(
+    (a, b) => (b.gameDatetime ?? 0) - (a.gameDatetime ?? 0)
+  );
+
+  const last5 = sorted.slice(0, 5).map((m) => m.placement ?? 8);
+  const last10 = sorted.slice(0, 10).map((m) => m.placement ?? 8);
+
+  const avg5 = average(last5);
+  const avg10 = average(last10);
+
+  let trend: "up" | "down" | "stable" = "stable";
+
+  if (avg5 < avg10 - 0.3) trend = "up";
+  else if (avg5 > avg10 + 0.3) trend = "down";
+
+  return {
+    avgLast5: Number(avg5.toFixed(2)),
+    avgLast10: Number(avg10.toFixed(2)),
+    trend,
+  };
+}
+
+function generateInsights(data: any) {
+  if (!data) return [];
+
+  const insights: string[] = [];
+
+  if (data.avgPlacement <= 4.5) {
+    insights.push("Strong overall performance across matches.");
+  } else {
+    insights.push("Struggles to consistently reach top 4.");
+  }
+
+  if (data.top4Rate >= 50) {
+    insights.push("High top 4 consistency.");
+  }
+
+  if (data.avgBottom4Placement >= 6.5) {
+    insights.push("Heavy losses when falling behind.");
+  }
+
+  if (data.consistencyScore > 0.5) {
+    insights.push("Very consistent playstyle.");
+  } else {
+    insights.push("High variance between matches.");
+  }
+
+  if (data.avgLevel >= 8) {
+    insights.push("Prefers late game scaling boards.");
+  }
+
+  return insights;
+}
+
 function calculateOverview(matches: TftMatch[]) {
   if (!matches.length) return null;
 
@@ -114,14 +211,23 @@ function calculateOverview(matches: TftMatch[]) {
     });
   });
 
-  const favoriteChampion = Object.entries(championMap).sort((a, b) => b[1] - a[1])[0] ?? null;
-  const mostUsedItem = Object.entries(itemMap).sort((a, b) => b[1] - a[1])[0] ?? null;
-  const mostUsedTrait = Object.entries(traitMap).sort((a, b) => b[1] - a[1])[0] ?? null;
+  const favoriteChampion =
+    Object.entries(championMap).sort((a, b) => b[1] - a[1])[0] ?? null;
+
+  const mostUsedItem =
+    Object.entries(itemMap).sort((a, b) => b[1] - a[1])[0] ?? null;
+
+  const mostUsedTrait =
+    Object.entries(traitMap).sort((a, b) => b[1] - a[1])[0] ?? null;
 
   const top4Count = placements.filter((value) => value <= 4).length;
   const winCount = placements.filter((value) => value === 1).length;
 
-  return {
+  const placementStats = getPlacementStats(placements);
+  const distribution = getPlacementDistribution(placements);
+  const recentForm = getRecentForm(matches);
+
+  const overviewData = {
     totalGames: matches.length,
     avgPlacement: Number(average(placements).toFixed(2)),
     top4Rate: Number(percentage(top4Count, matches.length).toFixed(1)),
@@ -140,6 +246,21 @@ function calculateOverview(matches: TftMatch[]) {
 
     mostUsedTraitId: mostUsedTrait?.[0] ?? null,
     mostUsedTraitCount: mostUsedTrait?.[1] ?? 0,
+
+    bestPlacement: placementStats?.bestPlacement ?? null,
+    worstPlacement: placementStats?.worstPlacement ?? null,
+    placementSpread: placementStats?.placementSpread ?? null,
+    avgTop4Placement: placementStats?.avgTop4Placement ?? null,
+    avgBottom4Placement: placementStats?.avgBottom4Placement ?? null,
+    consistencyScore: placementStats?.consistencyScore ?? null,
+
+    placementDistribution: distribution,
+    recentForm,
+  };
+
+  return {
+    ...overviewData,
+    insights: generateInsights(overviewData),
   };
 }
 
